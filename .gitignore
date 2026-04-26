@@ -23,12 +23,12 @@ env/
 *.swp
 .DS_Store
 
-# Data and outputs (not redistributable)
-data/
-features/
-results/
-logs/
-checkpoints/
+# Data and outputs (not redistributable) — root-level only, not src/data/
+/data/
+/features/
+/results/
+/logs/
+/checkpoints/
 *.h5
 *.hdf5
 *.pt
