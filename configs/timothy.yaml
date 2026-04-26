@@ -1,0 +1,78 @@
+# Timothy Drought Phenotyping — Main Configuration
+# Experiment 01 (Nonvernalized) as default; override for exp02/exp03
+
+data:
+  plant_metadata: data/plant_metadata.csv
+  timepoint_metadata: data/timepoint_metadata.csv
+  feature_dir: features
+  experiment: exp01  # exp01, exp02, exp03, or "all"
+
+  raw:
+    # Exp01 paths (override for other experiments)
+    fluorescence: data/2023-Timothy-01-Nonvernalized/FCQ_Timothy-01.xlsx
+    digital_biomass: data/2023-Timothy-01-Nonvernalized/DigBio_Timothy-01.xlsx
+    veg_index: data/2023-Timothy-01-Nonvernalized/VegIndex_Timothy-01.xlsx
+    env_data: data/2023-Timothy-01-Nonvernalized/Envdata_Timothy-01_Probes.xlsx
+
+  fluor_normalize: true
+
+model:
+  image_encoder: "facebook/dinov2-base"
+  encoder_output_dim: 768
+
+  modality:
+    image_dim: 768
+    fluor_dim: 98
+    env_dim: 5
+    vi_dim: 11
+    hidden_dim: 128
+    gate_hidden: 64
+
+  temporal:
+    dim: 128
+    num_layers: 2
+    num_heads: 4
+    ff_dim: 512
+    dropout: 0.1
+
+  heads:
+    whc_hidden_dim: 64
+    biomass_hidden_dim: 64
+
+  phenology:
+    backbone_units: 128
+    backbone_layers: 1
+    num_attention_heads: 4
+    max_das: 51  # exp01; set to 111 for exp02, 140 for exp03
+
+  use_vi: true  # set false for no-VI experiments (--no-vi flag)
+
+  liquid:
+    hidden_dim: 32
+    modality_dim: 32
+    n_layers: 1
+    head_dim: 64
+
+  ablation:
+    enabled_modalities: ["image", "fluor", "env", "vi"]
+    fusion_mode: "gating"  # gating, concat
+    temporal_mode: "transformer"  # transformer, mlp, none
+    causal_mask: false
+
+training:
+  batch_size: 8
+  lr: 1e-4
+  weight_decay: 1e-4
+  max_epochs: 100
+  patience: 20
+  gradient_clip: 1.0
+  seed: 42
+
+  cv_strategy: "lopo"  # lopo, lowho, cross_experiment
+  loss:
+    whc_weight: 1.0
+    biomass_weight: 0.5
+    type: "huber"  # huber, mse
+
+evaluation:
+  metrics: ["mae", "rmse", "r2", "spearman"]

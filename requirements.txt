@@ -1,0 +1,13 @@
+torch>=2.0
+torchvision
+transformers
+h5py
+numpy
+pandas
+openpyxl
+omegaconf
+scipy
+scikit-learn
+matplotlib
+tqdm
+xgboost
