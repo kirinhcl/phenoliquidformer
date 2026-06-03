@@ -50,7 +50,6 @@ data/
 ├── 2023-Timothy-01-Nonvernalized/
 │   ├── FCQ_Timothy-01.xlsx
 │   ├── DigBio_Timothy-01.xlsx
-│   ├── VegIndex_Timothy-01.xlsx
 │   └── Envdata_Timothy-01_Probes.xlsx
 └── 2024-Timothy-02-Vernalized/
     └── EndPoint_Timothy-02_Weight+Flowering_fixed2.xlsx
@@ -85,7 +84,6 @@ python scripts/train_yield_transformer.py      # Pure Transformer baseline
 python scripts/train_liquid_teacher.py \
     --experiment exp01 \
     --model-type liquid_transformer \
-    --no-vi \
     --output-dir results/lt_h64_n2_res \
     --override model.liquid.hidden_dim=64 model.liquid.n_layers=2
 ```
