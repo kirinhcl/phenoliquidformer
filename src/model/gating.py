@@ -14,27 +14,20 @@ class ModalityProjection(nn.Module):
         image_dim: int = 768,
         fluor_dim: int = 92,
         env_dim: int = 5,
-        vi_dim: int = 11,
         hidden_dim: int = 128,
-        use_vi: bool = True,
     ) -> None:
         super().__init__()
         self.hidden_dim: int = hidden_dim
-        self.use_vi: bool = use_vi
 
         # Projection MLPs for each modality
         self.image_proj: nn.Sequential = self._make_proj(image_dim, hidden_dim)
         self.fluor_proj: nn.Sequential = self._make_proj(fluor_dim, hidden_dim)
         self.env_proj: nn.Sequential = self._make_proj(env_dim, hidden_dim)
-        if use_vi:
-            self.vi_proj: nn.Sequential = self._make_proj(vi_dim, hidden_dim)
 
         # LayerNorm per modality to prevent gate collapse from scale mismatch
         self.image_norm: nn.LayerNorm = nn.LayerNorm(hidden_dim)
         self.fluor_norm: nn.LayerNorm = nn.LayerNorm(hidden_dim)
         self.env_norm: nn.LayerNorm = nn.LayerNorm(hidden_dim)
-        if use_vi:
-            self.vi_norm: nn.LayerNorm = nn.LayerNorm(hidden_dim)
 
         # Mask tokens for image and fluorescence (only modalities with masks)
         self.image_mask_token: nn.Parameter = nn.Parameter(torch.zeros(1, 1, hidden_dim))
@@ -54,7 +47,6 @@ class ModalityProjection(nn.Module):
         image_emb: Tensor,
         fluorescence: Tensor,
         environment: Tensor,
-        vi: Tensor | None,
         image_mask: Tensor,
         fluor_mask: Tensor,
     ) -> list[Tensor]:
@@ -64,13 +56,11 @@ class ModalityProjection(nn.Module):
             image_emb: Image embeddings of shape (B, T, 768).
             fluorescence: Fluorescence data of shape (B, T, 92).
             environment: Environment data of shape (B, T, 5).
-            vi: Vegetation index data of shape (B, T, 11), or None when use_vi=False.
             image_mask: Boolean mask for image of shape (B, T), True = valid.
             fluor_mask: Boolean mask for fluorescence of shape (B, T), True = valid.
 
         Returns:
-            List of 3 or 4 projected modalities, each of shape (B, T, 128).
-            Returns 4 elements when use_vi=True, 3 elements when use_vi=False.
+            List of 3 projected modalities, each of shape (B, T, 128).
         """
         batch_size, time_steps, _ = image_emb.shape
 
@@ -86,11 +76,7 @@ class ModalityProjection(nn.Module):
         fluor_token = self.fluor_mask_token.expand(batch_size, time_steps, -1)
         fluor_proj = torch.where(fluor_mask.unsqueeze(-1), fluor_proj, fluor_token)
 
-        if not hasattr(self, "vi_proj"):
-            return [image_proj, fluor_proj, env_proj]
-
-        vi_proj = self.vi_norm(self.vi_proj(vi))  # type: ignore[arg-type]
-        return [image_proj, fluor_proj, env_proj, vi_proj]
+        return [image_proj, fluor_proj, env_proj]
 
 
 class ModalityGating(nn.Module):

@@ -28,9 +28,8 @@ class TimothyDroughtModel(nn.Module):
         super().__init__()
         cfg = model_config.model if "model" in model_config else model_config
 
-        self.use_vi: bool = OmegaConf.select(cfg, "use_vi", default=True)
         self.enabled_modalities: list[str] = OmegaConf.select(
-            cfg, "ablation.enabled_modalities", default=["image", "fluor", "env", "vi"]
+            cfg, "ablation.enabled_modalities", default=["image", "fluor", "env"]
         )
         self.fusion_mode: str = OmegaConf.select(
             cfg, "ablation.fusion_mode", default="gating"
@@ -45,16 +44,14 @@ class TimothyDroughtModel(nn.Module):
         # View aggregation
         self.view_agg = ViewAggregation(cfg.encoder_output_dim)
 
-        num_mods: int = 4 if self.use_vi else 3
+        num_mods: int = 3  # image, fluor, env
 
         # Modality projection
         self.modality_proj = ModalityProjection(
             image_dim=cfg.modality.image_dim,
             fluor_dim=cfg.modality.fluor_dim,
             env_dim=cfg.modality.env_dim,
-            vi_dim=cfg.modality.vi_dim,
             hidden_dim=cfg.modality.hidden_dim,
-            use_vi=self.use_vi,
         )
 
         # Modality gating
@@ -124,14 +121,13 @@ class TimothyDroughtModel(nn.Module):
         fluorescence = batch["fluorescence"]  # (B, T, fluor_dim)
         fluor_mask = batch["fluor_mask"]  # (B, T)
         environment = batch["environment"]  # (B, T, 5)
-        vi = batch["vi"] if self.use_vi else None  # (B, T, vi_dim) or None
 
         modality_features = self.modality_proj(
-            image_emb, fluorescence, environment, vi, image_active, fluor_mask
+            image_emb, fluorescence, environment, image_active, fluor_mask
         )
 
-        # Zero out disabled modalities (ablation; vi is already excluded when use_vi=False)
-        modality_names = ["image", "fluor", "env"] + (["vi"] if self.use_vi else [])
+        # Zero out disabled modalities (ablation)
+        modality_names = ["image", "fluor", "env"]
         for i, name in enumerate(modality_names):
             if name not in self.enabled_modalities:
                 modality_features[i] = torch.zeros_like(modality_features[i])

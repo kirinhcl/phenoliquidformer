@@ -36,6 +36,18 @@ class LiquidTransformerModel(nn.Module):
         pcfg_backbone_units = OmegaConf.select(mcfg, "phenology.backbone_units", default=128)
         pcfg_num_heads = OmegaConf.select(mcfg, "phenology.num_attention_heads", default=4)
         self.max_das = OmegaConf.select(mcfg, "phenology.max_das", default=51)
+        # Ablation flag: when True, force phi_t = 0 at every step so the
+        # PhenologyCfC cell becomes equivalent to a standard CfC (the
+        # phi_proj weights still exist but receive a zero input and
+        # therefore contribute nothing to time-constant pre-activations).
+        self.disable_phenology = OmegaConf.select(mcfg, "phenology.disable", default=False)
+        # Temporal backbone selector. "cfc" (default) uses the
+        # PhenologyCfC continuous-time cell; "gru" swaps in a vanilla
+        # nn.GRU at the same hidden_dim, holding the rest of the
+        # LiquidFormer architecture (Transformer fusion, residual,
+        # attention pooling, yield head) fixed. This isolates the
+        # continuous-time vs discrete-time RNN axis for the benchmark.
+        self.temporal_backbone = OmegaConf.select(mcfg, "temporal.backbone", default="cfc")
 
         # 1. View aggregation
         self.view_agg = ViewAggregation(mcfg.encoder_output_dim)
@@ -47,9 +59,7 @@ class LiquidTransformerModel(nn.Module):
                 image_dim=mcfg.modality.image_dim,
                 fluor_dim=mcfg.modality.fluor_dim,
                 env_dim=mcfg.modality.env_dim,
-                vi_dim=mcfg.modality.vi_dim,
                 hidden_dim=fusion_dim,
-                use_vi=False,
             )
             num_mods = 3  # image, fluor, env
             self.context_dim = 3  # WHC + genotype (2-dim one-hot)
@@ -80,12 +90,19 @@ class LiquidTransformerModel(nn.Module):
         cfc_layers = []
         for i in range(n_layers):
             in_dim = cfc_input_dim if i == 0 else hidden_dim
-            cfc_layers.append(PhenologyCfC(
-                input_size=in_dim,
-                hidden_size=hidden_dim,
-                backbone_units=pcfg_backbone_units,
-                batch_first=True,
-            ))
+            if self.temporal_backbone == "gru":
+                cfc_layers.append(nn.GRU(
+                    input_size=in_dim,
+                    hidden_size=hidden_dim,
+                    batch_first=True,
+                ))
+            else:
+                cfc_layers.append(PhenologyCfC(
+                    input_size=in_dim,
+                    hidden_size=hidden_dim,
+                    backbone_units=pcfg_backbone_units,
+                    batch_first=True,
+                ))
         self.cfc_layers = nn.ModuleList(cfc_layers)
         self.hidden_dim = hidden_dim
 
@@ -102,6 +119,7 @@ class LiquidTransformerModel(nn.Module):
         self.yield_head = YieldHead(
             hidden_dim=hidden_dim,
             mlp_dim=OmegaConf.select(mcfg, "liquid.head_dim", default=64),
+            dropout=OmegaConf.select(mcfg, "liquid.dropout", default=0.1),
         )
 
     def _build_context(self, batch: dict) -> Tensor:
@@ -144,7 +162,7 @@ class LiquidTransformerModel(nn.Module):
             image_active = image_mask.any(dim=-1)  # (B, T)
 
             modality_features = self.modality_proj(
-                image_emb, fluorescence, environment, None,
+                image_emb, fluorescence, environment,
                 image_active, fluor_mask,
             )
             fused, gates = self.modality_gating(modality_features)  # (B, T, 128)
@@ -160,6 +178,8 @@ class LiquidTransformerModel(nn.Module):
         dt_norm = dt / max_dt  # normalized delta-t for ts_seq
 
         phi_seq = (times / self.max_das).clamp(0, 1)  # (T,)
+        if self.disable_phenology:
+            phi_seq = torch.zeros_like(phi_seq)
         phi_seq_b = phi_seq.unsqueeze(0).expand(fused.shape[0], -1)  # (B, T)
         dt_seq_b = dt_norm.unsqueeze(0).expand(fused.shape[0], -1)   # (B, T)
 
@@ -188,10 +208,14 @@ class LiquidTransformerModel(nn.Module):
         residual = self.residual_proj(fused[:, :T_used])  # (B, T_used, hidden_dim)
         residual = residual * active.unsqueeze(-1).float()
 
-        # PhenologyCfC temporal processing; dt passed as ts_seq
+        # Recurrent temporal processing. CfC backbone uses phi/dt; GRU
+        # backbone just consumes the step_input sequence.
         x = step_input
         for layer in self.cfc_layers:
-            h_seq, _ = layer(x, phi_seq=phi_seq_b, ts_seq=dt_seq_b)
+            if self.temporal_backbone == "gru":
+                h_seq, _ = layer(x)  # nn.GRU returns (output, h_n)
+            else:
+                h_seq, _ = layer(x, phi_seq=phi_seq_b, ts_seq=dt_seq_b)
             x = h_seq
 
         # Add residual connection: CfC output + projected fused features

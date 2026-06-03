@@ -33,7 +33,6 @@ class TimothyDroughtDataset(Dataset[Dict[str, Any]]):
         fluorescence: (T, fluor_dim) float32
         fluor_mask: (T,) bool
         environment: (T, 5) float32
-        vi: (T, vi_dim) float32
         temporal_positions: (T,) float32 — DAS values
         whc_target: float — WHC level (0.25-0.90)
         fw_target: float — Fresh weight (NaN if missing)
@@ -104,7 +103,6 @@ class TimothyDroughtDataset(Dataset[Dict[str, Any]]):
         self.fluor_normalize = getattr(self.cfg.data, "fluor_normalize", False)
         self.fluor_data, self.fluor_dim = self._load_fluorescence()
         self.env_data = self._load_environment()
-        self.vi_data, self.vi_dim = self._load_vi()
         self.biomass_data = self._load_digital_biomass()
 
         # Compute biomass normalization stats (log1p + z-score)
@@ -136,7 +134,6 @@ class TimothyDroughtDataset(Dataset[Dict[str, Any]]):
         fluorescence = torch.zeros((self.max_T, self.fluor_dim), dtype=torch.float32)
         fluor_mask = torch.zeros(self.max_T, dtype=torch.bool)
         environment = torch.zeros((self.max_T, 5), dtype=torch.float32)
-        vi = torch.zeros((self.max_T, self.vi_dim), dtype=torch.float32)
         digital_biomass = torch.zeros(self.max_T, dtype=torch.float32)
         biomass_mask = torch.zeros(self.max_T, dtype=torch.bool)
 
@@ -177,13 +174,6 @@ class TimothyDroughtDataset(Dataset[Dict[str, Any]]):
                     t_idx = rounds.index(round_num)
                     environment[t_idx] = torch.from_numpy(vec)
 
-        # Load vegetation indices
-        if key in self.vi_data:
-            for round_num, vec in self.vi_data[key].items():
-                if round_num in rounds:
-                    t_idx = rounds.index(round_num)
-                    vi[t_idx] = torch.from_numpy(vec)
-
         # Load digital biomass (log1p + z-score normalized)
         if key in self.biomass_data:
             for round_num, val in self.biomass_data[key].items():
@@ -196,7 +186,6 @@ class TimothyDroughtDataset(Dataset[Dict[str, Any]]):
         # Clean NaNs
         torch.nan_to_num_(fluorescence, nan=0.0)
         torch.nan_to_num_(environment, nan=0.0)
-        torch.nan_to_num_(vi, nan=0.0)
         torch.nan_to_num_(digital_biomass, nan=0.0)
 
         # Targets
@@ -214,7 +203,6 @@ class TimothyDroughtDataset(Dataset[Dict[str, Any]]):
             "fluorescence": fluorescence,
             "fluor_mask": fluor_mask,
             "environment": environment,
-            "vi": vi,
             "temporal_positions": temporal_positions,
             "active_mask": active_mask,
             "whc_target": whc_target,
@@ -379,57 +367,6 @@ class TimothyDroughtDataset(Dataset[Dict[str, Any]]):
             env_data[exp_id] = exp_env
 
         return env_data
-
-    def _load_vi(
-        self,
-    ) -> tuple[dict[str, dict[int, npt.NDArray[np.float32]]], int]:
-        """Load vegetation index data per plant per round."""
-        exp_dirs = self._get_experiment_files()
-        vi_data: dict[str, dict[int, npt.NDArray[np.float32]]] = {}
-        vi_dim = None
-
-        vi_cols = [
-            "ExG", "GREENESS", "GLI", "GREEN_STRENGHT", "NGRVI", "VARI",
-            "BG_RATIO", "CHROMA_BASE", "CHROMA_RATIO", "CHROMA_DIFFERENCE", "TGI",
-        ]
-
-        experiments = (
-            list(exp_dirs.keys())
-            if self.cfg.data.experiment == "all"
-            else [self.cfg.data.experiment]
-        )
-
-        for exp_id in experiments:
-            exp_dir = exp_dirs[exp_id]
-            vi_files = list(exp_dir.glob("VegIndex_Timothy-*.xlsx"))
-            if not vi_files:
-                continue
-            df = pd.read_excel(vi_files[0])
-            df.columns = [str(c).strip() for c in df.columns]
-
-            # Use available VI columns
-            available_cols = [c for c in vi_cols if c in df.columns]
-            if vi_dim is None:
-                vi_dim = len(available_cols)
-
-            pid_col = "Plant ID" if "Plant ID" in df.columns else "Tray ID"
-            df[pid_col] = df[pid_col].astype(str).str.strip()
-
-            for _, row in df.iterrows():
-                pid = str(row[pid_col])
-                ro = row.get("Round Order")
-                if pd.isna(ro):
-                    continue
-                ro = int(ro)
-                vec = np.array(row[available_cols].tolist(), dtype=np.float32)
-                np.nan_to_num(vec, copy=False, nan=0.0)
-
-                key = f"{exp_id}:{pid}"
-                if key not in vi_data:
-                    vi_data[key] = {}
-                vi_data[key][ro] = vec
-
-        return vi_data, vi_dim or 11
 
     def _load_digital_biomass(self) -> dict[str, dict[int, float]]:
         """Load digital biomass trajectory data per plant."""

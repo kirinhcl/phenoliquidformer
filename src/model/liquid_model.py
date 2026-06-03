@@ -74,13 +74,13 @@ class ModalityProjector(nn.Module):
 class YieldHead(nn.Module):
     """Predict DW and flowering count from final hidden state."""
 
-    def __init__(self, hidden_dim: int, mlp_dim: int = 64) -> None:
+    def __init__(self, hidden_dim: int, mlp_dim: int = 64, dropout: float = 0.1) -> None:
         super().__init__()
         self.shared = nn.Sequential(
             nn.LayerNorm(hidden_dim),
             nn.Linear(hidden_dim, mlp_dim),
             nn.Tanh(),
-            nn.Dropout(0.1),
+            nn.Dropout(dropout),
         )
         self.dw_out = nn.Linear(mlp_dim, 1)
         self.flower_out = nn.Linear(mlp_dim, 1)
@@ -112,22 +112,19 @@ class LiquidYieldModel(nn.Module):
         # View aggregation
         self.view_agg = ViewAggregation(mcfg.encoder_output_dim)
 
-        # Modality projection
+        # Modality projection (VI disabled a priori; legacy code path)
         if role == "teacher":
-            use_vi = OmegaConf.select(mcfg, "use_vi", default=True)
             self.modality_proj = ModalityProjector(
                 image_dim=mcfg.modality.image_dim,
                 fluor_dim=mcfg.modality.fluor_dim,
-                vi_dim=mcfg.modality.vi_dim,
                 out_dim=modality_out,
-                use_fluor=True, use_vi=use_vi,
+                use_fluor=True, use_vi=False,
             )
             context_dim = 3  # WHC + genotype (2-dim one-hot)
         else:
             self.modality_proj = ModalityProjector(
                 image_dim=mcfg.modality.image_dim,
                 fluor_dim=mcfg.modality.fluor_dim,
-                vi_dim=mcfg.modality.vi_dim,
                 out_dim=modality_out,
                 use_fluor=False, use_vi=False,
             )

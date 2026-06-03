@@ -118,17 +118,15 @@ class TimothyYieldModel(nn.Module):
             self.modality_proj = ModalityProjector(
                 image_dim=mcfg.modality.image_dim,
                 fluor_dim=mcfg.modality.fluor_dim,
-                vi_dim=mcfg.modality.vi_dim,
                 out_dim=modality_out,
                 use_fluor=True,
-                use_vi=True,
+                use_vi=False,
             )
             context_dim = 3  # WHC scalar (1) + genotype one-hot (2)
         else:  # student
             self.modality_proj = ModalityProjector(
                 image_dim=mcfg.modality.image_dim,
                 fluor_dim=mcfg.modality.fluor_dim,
-                vi_dim=mcfg.modality.vi_dim,
                 out_dim=modality_out,
                 use_fluor=False,
                 use_vi=False,

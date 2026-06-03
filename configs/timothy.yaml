@@ -24,7 +24,6 @@ model:
     image_dim: 768
     fluor_dim: 98
     env_dim: 5
-    vi_dim: 11
     hidden_dim: 128
     gate_hidden: 64
 
@@ -45,8 +44,6 @@ model:
     num_attention_heads: 4
     max_das: 51  # exp01; set to 111 for exp02, 140 for exp03
 
-  use_vi: true  # set false for no-VI experiments (--no-vi flag)
-
   liquid:
     hidden_dim: 32
     modality_dim: 32
@@ -54,7 +51,7 @@ model:
     head_dim: 64
 
   ablation:
-    enabled_modalities: ["image", "fluor", "env", "vi"]
+    enabled_modalities: ["image", "fluor", "env"]
     fusion_mode: "gating"  # gating, concat
     temporal_mode: "transformer"  # transformer, mlp, none
     causal_mask: false
