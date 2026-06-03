@@ -136,7 +136,7 @@ If you use this code, please cite:
 @article{lu2026phenoliquidformer,
   title   = {PhenoLiquidFormer: A Continuous-Time Hybrid Architecture for
              Multimodal Drought Yield Prediction in Timothy Grass},
-  author  = {Lu, Chenghao and Liu, Chang and Poque, Sylvain and
+  author  = {Lu, Chenghao and Liu, Chang and Poque, Sylvain and Yu, Kang and
              Himanen, Kristiina and Su, Xiang},
   journal = {Computers and Electronics in Agriculture},
   year    = {2026},
