@@ -1,8 +1,8 @@
-# PhenoLiquidFormer
+# LiquidFormer
 
-Code release for **"PhenoLiquidFormer: A Continuous-Time Hybrid Architecture for Multimodal Drought Yield Prediction in Timothy Grass"**, submitted to *Computers and Electronics in Agriculture*.
+Code release for **"LiquidFormer: A Liquid Neural Network for Cross-Stage Multimodal Yield Prediction in Timothy Grass"**, submitted to *Computers and Electronics in Agriculture*. (This repository was published under its earlier working name, `phenoliquidformer`.)
 
-PhenoLiquidFormer is a hybrid architecture combining Transformer-style multimodal fusion with phenology-aware Closed-form Continuous-time (CfC) dynamics, adapted across developmental stages via LoRA, for dry-weight yield prediction in Timothy grass (*Phleum pratense*) under drought.
+LiquidFormer is a hybrid architecture combining a gated Transformer-style multimodal fusion block, a Closed-form Continuous-time (CfC) recurrent backbone, and an attention-pooling readout, adapted across developmental stages via LoRA, for dry-weight yield prediction in Timothy grass (*Phleum pratense*) under drought. A phenology-aware variant (PhenologyCfC, with time constants modulated by φ = DAS/max DAS) is retained for the headline checkpoint but contributes no statistically significant gain (Wilcoxon p = 0.37) and is reported as an architectural ablation rather than a load-bearing design choice.
 
 ## Architecture
 
@@ -16,9 +16,11 @@ src/
 │   ├── temporal_attention.py   # TemporalAttentionPooling (4-head query token)
 │   ├── heads.py                # WHCRegressionHead, BiomassTrajectoryHead, YieldHead
 │   ├── phenology_cfc.py        # PhenologyCfCCell + PhenologyCfC (τ modulated by φ=DAS/max_DAS)
-│   ├── liquid_transformer.py   # PhenoLiquidFormer (362K params) — PRIMARY MODEL
+│   ├── liquid_transformer.py   # LiquidFormer (321K params) — PRIMARY MODEL
+│   ├── phenology_liquid_model.py  # PhenologyLiquidModel (PhenologyCfC + attention pooling; φ variant)
 │   ├── timothy_model.py        # Pure Transformer baseline (602K params)
 │   ├── liquid_model.py         # Legacy Liquid NN / CfC (66K params)
+│   ├── yield_model.py          # Teacher-Student Neural ODE (legacy distillation)
 │   └── ode_dynamics.py         # Neural ODE (73K params)
 ├── training/
 │   ├── cv.py                   # LeaveOnePlantOutCV, LeaveOneWHCOutCV, CrossExperimentCV
@@ -78,7 +80,7 @@ python scripts/train_yield_baselines.py        # Ridge, RF, XGBoost, group-mean
 python scripts/train_yield_transformer.py      # Pure Transformer baseline
 ```
 
-### 4. Train PhenoLiquidFormer
+### 4. Train LiquidFormer
 
 ```bash
 python scripts/train_liquid_teacher.py \
@@ -113,27 +115,28 @@ export PROJECT_ROOT=/path/to/phenoliquidformer
 sbatch scripts/slurm_lt_ablation.sh
 ```
 
-## Key results (Exp01, 48-fold leave-one-plant-out)
+## Key results (Exp01, 48-fold leave-one-plant-out; deep models are 5-seed means ± SD)
 
-| Model | Params | MAE (g) | R² (95% CI) |
+| Model | Params | MAE (g) | R² |
 |---|---|---|---|
-| **PhenoLiquidFormer** | 362K | **1.90** | **0.79 [0.67, 0.85]** |
-| Transformer | 602K | 2.59 | 0.63 [0.35, 0.76] |
+| **LiquidFormer** | 321K | **1.83** | **0.797 ± 0.059** |
+| Transformer | 602K | 1.92 | 0.761 ± 0.058 |
+| GRU+fusion | 276K | 2.03 | 0.736 ± 0.074 |
 | XGBoost | — | 2.96 | 0.46 |
 | Random Forest | — | 3.03 | 0.45 |
 | Ridge | — | 2.81 | 0.37 |
 | Group-mean | — | 3.60 | 0.34 |
 
-PhenoLiquidFormer vs Transformer: paired Wilcoxon p = 0.004, Cohen's d = −0.37.
+LiquidFormer and the Transformer are statistically equivalent in mean accuracy (paired Wilcoxon p = 0.48, ns); LiquidFormer's advantage is parameter efficiency (47% fewer parameters), a marginal edge over a matched GRU backbone (LiquidFormer vs GRU+fusion p = 0.054), and an inspectable continuous-time gate — not headline accuracy. A rank-2 LoRA adapter (~500 trainable parameters) recovers the cross-stage Exp01→Exp02 collapse, matching full fine-tuning while updating ~10³× fewer parameters.
 
 ## Citation
 
 If you use this code, please cite:
 
 ```bibtex
-@article{lu2026phenoliquidformer,
-  title   = {PhenoLiquidFormer: A Continuous-Time Hybrid Architecture for
-             Multimodal Drought Yield Prediction in Timothy Grass},
+@article{lu2026liquidformer,
+  title   = {LiquidFormer: A Liquid Neural Network for Cross-Stage
+             Multimodal Yield Prediction in Timothy Grass},
   author  = {Lu, Chenghao and Liu, Chang and Poque, Sylvain and Yu, Kang and
              Himanen, Kristiina and Su, Xiang},
   journal = {Computers and Electronics in Agriculture},
